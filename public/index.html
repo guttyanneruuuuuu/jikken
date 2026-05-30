@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#1a1030" />
+  <title>Kitchen Chaos 🍳</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 縦持ち警告 -->
+  <div id="rotate-hint">
+    <div class="rotate-icon">📱↻</div>
+    <p>スマホを<strong>横向き</strong>にしてね！</p>
+  </div>
+
+  <!-- ============ メインメニュー ============ -->
+  <section id="screen-menu" class="screen active">
+    <div class="menu-bg"></div>
+    <div class="menu-card">
+      <h1 class="logo">🍳 KITCHEN <span>CHAOS</span></h1>
+      <p class="tagline">なかまと協力してオーダーをさばけ！</p>
+
+      <div class="name-row">
+        <label>なまえ</label>
+        <input id="player-name" maxlength="10" placeholder="シェフの名前" />
+      </div>
+
+      <div class="menu-buttons">
+        <button id="btn-ai" class="btn btn-primary">
+          <span class="btn-emoji">🤖</span> AIとプレイ
+        </button>
+        <button id="btn-create" class="btn btn-secondary">
+          <span class="btn-emoji">👥</span> ルームを作る
+        </button>
+        <button id="btn-join" class="btn btn-secondary">
+          <span class="btn-emoji">🔗</span> ルームに参加
+        </button>
+      </div>
+
+      <div id="join-box" class="join-box hidden">
+        <input id="join-code" maxlength="4" placeholder="コード4文字" />
+        <button id="btn-join-go" class="btn btn-primary">参加</button>
+      </div>
+      <p id="menu-error" class="error-msg"></p>
+    </div>
+    <footer class="credit">2.5D Co-op Cooking · タップで操作</footer>
+  </section>
+
+  <!-- ============ ロビー ============ -->
+  <section id="screen-lobby" class="screen">
+    <div class="lobby-card">
+      <h2>ルーム <span id="lobby-code" class="code-badge">----</span></h2>
+      <p class="lobby-hint" id="lobby-mode-hint"></p>
+
+      <div class="share-row" id="share-row">
+        <button id="btn-copy" class="btn btn-small">📋 招待リンクをコピー</button>
+        <span id="copy-done" class="copy-done"></span>
+      </div>
+
+      <div class="level-select">
+        <label>ステージ</label>
+        <div class="level-buttons" id="level-buttons"></div>
+      </div>
+
+      <h3>シェフたち</h3>
+      <div id="player-list" class="player-list"></div>
+
+      <div class="lobby-actions">
+        <button id="btn-add-ai" class="btn btn-small">＋ AIシェフ追加</button>
+        <button id="btn-remove-ai" class="btn btn-small">－ AI削除</button>
+      </div>
+
+      <div class="lobby-bottom">
+        <button id="btn-leave" class="btn btn-ghost">退出</button>
+        <button id="btn-start" class="btn btn-primary btn-big">スタート！</button>
+      </div>
+      <p id="lobby-error" class="error-msg"></p>
+    </div>
+  </section>
+
+  <!-- ============ ゲーム ============ -->
+  <section id="screen-game" class="screen">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-top">
+        <div class="hud-orders" id="hud-orders"></div>
+        <div class="hud-stats">
+          <div class="hud-timer" id="hud-timer">⏱ 0:00</div>
+          <div class="hud-score" id="hud-score">⭐ 0</div>
+          <div class="hud-combo" id="hud-combo"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- モバイル操作 -->
+    <div id="controls">
+      <div id="joystick" class="joystick">
+        <div class="joy-base"></div>
+        <div class="joy-knob" id="joy-knob"></div>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-dash" class="action-btn dash-btn">💨<span>ダッシュ</span></button>
+        <button id="btn-action" class="action-btn act-btn">✋<span>つかむ／作業</span></button>
+      </div>
+    </div>
+
+    <!-- 飛び出すトースト -->
+    <div id="toast-layer"></div>
+  </section>
+
+  <!-- ============ リザルト ============ -->
+  <section id="screen-result" class="screen">
+    <div class="result-card">
+      <h2 id="result-title">クリア！</h2>
+      <div class="result-score" id="result-score">⭐ 0</div>
+      <div class="result-stars" id="result-stars"></div>
+      <p id="result-level"></p>
+      <button id="btn-result-back" class="btn btn-primary btn-big">ロビーへ戻る</button>
+    </div>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

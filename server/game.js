@@ -312,8 +312,8 @@ export class GameRoom {
 
   // プレイヤーが向いている前方のステーションセルを取得
   _facingCell(p) {
-    const fx = p.x + p.facing.x * TILE_SIZE * 0.7;
-    const fy = p.y + p.facing.y * TILE_SIZE * 0.7;
+    const fx = p.x + p.facing.x * TILE_SIZE * 0.95;
+    const fy = p.y + p.facing.y * TILE_SIZE * 0.95;
     const tx = Math.floor(fx / TILE_SIZE);
     const ty = Math.floor(fy / TILE_SIZE);
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return null;
