@@ -38,7 +38,7 @@ function updateAIPlayer(room, p, dt) {
 
   if ((!ai.goal || ai.replan <= 0) && !busy) {
     planGoal(room, p);
-    ai.replan = 0.5;
+    ai.replan = 0.35;
   }
 
   if (!ai.goal) {
@@ -110,64 +110,119 @@ function planGoal(room, p) {
     if (trash) { ai.goal = { type: 'trash', cell: trash }; return; }
   }
 
-  // 作るべき注文を選ぶ
-  const order = pickOrder(room, p);
-  if (!order) { return; }
+  // このAI専用の組み立てカウンターを確保(他AIと取り合わないため)
+  const myCounter = ensureMyCounter(room, p);
+
+  // 作るべき注文を選ぶ(自分の担当)
+  const order = pickOrderFor(room, p, myCounter);
+  if (!order) {
+    // やることが無い: 自分のカウンターに居座らずスポーン的にじっとする
+    return;
+  }
+  ai.orderId = order.id;
   const recipe = RECIPES[order.recipe];
 
-  // 組み立て皿(このレシピ用)を取得 or 準備
-  const plateCell = getAssemblyPlate(room, recipe);
+  // 自分のカウンターにある皿(=組み立て皿)
+  const plateCell = myCounter && myCounter.cell.item && myCounter.cell.item.kind === 'plate'
+    ? myCounter : null;
 
-  // 4) 食材を手に持っている → 加工 or 盛り付けへ
+  // 4) 食材を手に持っている → 加工 or 盛り付けへ(自分の皿へ)
   if (p.holding && p.holding.kind === 'ingredient') {
-    const goal = advanceHeldIngredient(room, p, recipe, plateCell);
+    const goal = advanceHeldIngredient(room, p, recipe, plateCell, myCounter);
     if (goal) { ai.goal = goal; return; }
   }
 
-  // 5) 皿が完成している(全材料が揃った) → 提供のため皿を取りに行く
+  // 5) 自分の皿が完成 → 提供のため取りに行く
   if (plateCell && plateIsComplete(plateCell.cell.item, recipe)) {
-    if (!p.holding) {
-      ai.goal = { type: 'takeplate', cell: plateCell };
-      return;
-    }
+    if (!p.holding) { ai.goal = { type: 'takeplate', cell: plateCell }; return; }
   }
 
-  // 6) 盤上に「完成状態だが皿に未投入」の必要食材があれば、それを拾って皿へ運ぶ
-  if (!p.holding && plateCell) {
-    const ready = findReadyIngredientForPlate(room, recipe, plateCell.cell.item);
-    if (ready) { ai.goal = { type: 'pickup', cell: ready }; return; }
-  }
-
-  // 7) まだ足りない食材を担当して用意する(手ぶら時)
+  // 6) 手ぶら
   if (!p.holding) {
-    const need = nextNeededIngredient(room, recipe, plateCell);
+    // 自分のカウンターに皿が無ければ皿を取りに行く
+    if (myCounter && !myCounter.cell.item) {
+      const stack = nearestStation(room, p, STATION.PLATE_STACK,
+        s => (Array.isArray(s.cell.plates) ? s.cell.plates.length : (s.cell.plates || 0)) > 0);
+      if (stack) { ai.goal = { type: 'getplate', cell: stack }; return; }
+    }
+    // 皿に足りない食材を用意(crateから)
+    const need = nextNeededForPlate(recipe, plateCell ? plateCell.cell.item : null);
     if (need) {
-      // すでにキッチン上に「途中の同種食材」があれば拾って続きをやる
-      const existing = findIngredientOnBoardToward(room, need);
-      if (existing) { ai.goal = { type: 'pickup', cell: existing }; return; }
-      // crateから取る
       const crate = nearestStation(room, p, INGREDIENT_TO_CRATE[need.type]);
       if (crate) { ai.goal = { type: 'getcrate', cell: crate }; return; }
     }
-    // 8) 皿がまだ無い → 皿置き場から取る
-    if (!plateCell) {
-      const stack = nearestStation(room, p, STATION.PLATE_STACK, s => (s.cell.plates || 0) > 0 || (Array.isArray(s.cell.plates) && s.cell.plates.length > 0));
-      if (stack) { ai.goal = { type: 'getplate', cell: stack }; return; }
-    }
   }
 
-  // 8) 皿を手に持っていて、組み立て位置が無い → 空きカウンターへ置く
+  // 7) 空の皿を手に持っている → 自分のカウンターへ置く
   if (p.holding && p.holding.kind === 'plate' && !p.holding.dirty && p.holding.contents.length === 0) {
+    if (myCounter && !myCounter.cell.item) { ai.goal = { type: 'putdown', cell: myCounter }; return; }
     const counter = nearestEmptyCounter(room, p);
     if (counter) { ai.goal = { type: 'putdown', cell: counter }; return; }
   }
 }
 
+// このAIに専用の組み立てカウンターを割り当てる(無ければ確保)
+function ensureMyCounter(room, p) {
+  const ai = p.ai;
+  const counters = findStations(room, STATION.COUNTER);
+  if (counters.length === 0) return null;
+
+  // 既に割り当て済みで有効ならそれを使う
+  if (ai.counterKey) {
+    const [cx, cy] = ai.counterKey.split(',').map(Number);
+    const found = counters.find(c => c.tx === cx && c.ty === cy);
+    if (found) return found;
+  }
+  // 他AIが使っているカウンターを除外して割り当て
+  const taken = new Set();
+  for (const id of room.aiPlayers) {
+    if (id === p.id) continue;
+    const other = room.players.get(id);
+    if (other && other.ai && other.ai.counterKey) taken.add(other.ai.counterKey);
+  }
+  const free = counters.find(c => !taken.has(`${c.tx},${c.ty}`));
+  const chosen = free || counters[room.aiPlayers.indexOf(p.id) % counters.length];
+  ai.counterKey = `${chosen.tx},${chosen.ty}`;
+  return chosen;
+}
+
+// 皿にまだ足りない食材(完成状態)を1つ返す
+function nextNeededForPlate(recipe, plate) {
+  const need = {};
+  for (const r of recipe.requires) need[`${r.type}:${r.state}`] = (need[`${r.type}:${r.state}`] || 0) + 1;
+  if (plate) for (const c of plate.contents) { const k = `${c.type}:${c.state}`; if (need[k]) need[k]--; }
+  for (const r of recipe.requires) {
+    const k = `${r.type}:${r.state}`;
+    if (need[k] > 0) return { type: r.type, state: r.state };
+  }
+  return null;
+}
+
+// このAIの担当注文を決める。既に作りかけ(自分の皿に中身)があればそれを継続。
+function pickOrderFor(room, p, myCounter) {
+  if (room.orders.length === 0) return null;
+  const ai = p.ai;
+
+  // 自分の皿に既に中身がある → その内容に一致する注文を継続
+  if (myCounter && myCounter.cell.item && myCounter.cell.item.kind === 'plate'
+      && myCounter.cell.item.contents.length > 0) {
+    const plate = myCounter.cell.item;
+    const match = room.orders.find(o => plateCompatible(plate, RECIPES[o.recipe]));
+    if (match) return match;
+  }
+
+  // 残り時間が少ない順。AI番号で別々の注文を担当(競合回避)
+  const sorted = [...room.orders].sort((a, b) => a.timeLeft - b.timeLeft);
+  const urgent = sorted.find(o => o.timeLeft < 12);
+  if (urgent) return urgent;
+  const aiIdx = Math.max(0, room.aiPlayers.indexOf(p.id));
+  return sorted[aiIdx % sorted.length] || sorted[0];
+}
+
 // 手持ち食材を「次の工程」へ進める目標を返す
-function advanceHeldIngredient(room, p, recipe, plateCell) {
+function advanceHeldIngredient(room, p, recipe, plateCell, myCounter) {
   const item = p.holding;
   const ing = INGREDIENTS[item.type];
-  // この食材がレシピで要求される状態
   const req = recipe.requires.find(r => r.type === item.type);
 
   if (item.state === 'burnt') {
@@ -175,37 +230,39 @@ function advanceHeldIngredient(room, p, recipe, plateCell) {
     return trash ? { type: 'trash', cell: trash } : null;
   }
 
-  // この食材はレシピに不要 → カウンターに置く
+  // レシピに不要 → 捨てる(余計な物を増やさない)
   if (!req) {
-    const counter = nearestEmptyCounter(room, p);
-    return counter ? { type: 'putdown', cell: counter } : null;
+    const trash = nearestStation(room, p, STATION.TRASH);
+    return trash ? { type: 'trash', cell: trash } : null;
   }
 
   const targetState = req.state;
 
-  // 切る必要があるのにまだ生
+  // 切る
   if (ing.needChop && item.state === 'raw' && targetState !== 'raw') {
     const cut = nearestFreeStation(room, p, STATION.CUTTING, item);
     if (cut) return { type: 'chop', cell: cut };
   }
-  // 焼く必要があるのにまだ焼いてない
+  // 焼く
   const cookReady = (item.state === 'chopped') || (item.state === 'raw' && !ing.needChop);
   if (ing.needCook && targetState === 'cooked' && cookReady && item.state !== 'cooked') {
     const stove = nearestFreeStation(room, p, STATION.STOVE, item);
     if (stove) return { type: 'cook', cell: stove };
   }
 
-  // 目標状態に到達 → 皿へ盛る
+  // 目標状態に到達 → 自分の皿へ盛る
   if (item.state === targetState) {
     if (plateCell) return { type: 'plate', cell: plateCell };
-    // 皿がまだ無ければカウンターに一旦置く
+    // 皿がまだ無い → 自分のカウンターに皿があるはずだが念のため空きカウンターに置く
+    if (myCounter && myCounter.cell.item && myCounter.cell.item.kind === 'plate')
+      return { type: 'plate', cell: myCounter };
     const counter = nearestEmptyCounter(room, p);
     return counter ? { type: 'putdown', cell: counter } : null;
   }
 
-  // それ以外(中間状態でステーションが埋まってる等) → 少し待つ:カウンターに置く
-  const counter = nearestEmptyCounter(room, p);
-  return counter ? { type: 'putdown', cell: counter } : null;
+  // 加工待ちでステーションが埋まっている等 → そのステーションが空くまで保持(その場待機)
+  // 一旦カウンターに置くと無限ループしやすいので、null返して待機させる
+  return null;
 }
 
 // レシピ用の組み立て皿(カウンター上の皿)を探す。
@@ -382,12 +439,24 @@ function nearestEmptyCounter(room, p) {
 function pickOrder(room, p) {
   if (room.orders.length === 0) return null;
   const sorted = [...room.orders].sort((a, b) => a.timeLeft - b.timeLeft);
-  // AIごとに担当を分散(idハッシュ)。ただし全員が最も急ぎの注文を手伝えるよう、
-  // まずは最短期限の注文を優先。
-  const idx = hashId(p.id) % sorted.length;
-  // 急ぎ(残り15秒未満)があれば全員でそれを優先
-  const urgent = sorted.find(o => o.timeLeft < 15);
-  return urgent || sorted[idx] || sorted[0];
+
+  // 既に組み立て中の皿に対応する注文があれば、それを最優先(全員で完成させる)
+  for (const o of sorted) {
+    const recipe = RECIPES[o.recipe];
+    const plate = getAssemblyPlate(room, recipe);
+    if (plate && plate.cell.item && plate.cell.item.contents.length > 0) {
+      return o;
+    }
+  }
+
+  // 急ぎ(残り18秒未満)があれば全員でそれを優先
+  const urgent = sorted.find(o => o.timeLeft < 18);
+  if (urgent) return urgent;
+
+  // それ以外: AI番号で担当を分散して並行作業
+  const aiIdx = room.aiPlayers.indexOf(p.id);
+  const n = Math.max(1, room.aiPlayers.length);
+  return sorted[aiIdx % sorted.length] || sorted[0];
 }
 
 function hashId(id) {
