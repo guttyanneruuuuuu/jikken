@@ -205,3 +205,25 @@ function escapeHtml(s) {
 socket.on('disconnect', () => {
   if (game) game.stop();
 });
+
+// ---- デバッグ: ?auto=1 でAIゲームを自動開始(描画検証用) ----
+if (urlParams.get('auto') === '1') {
+  socket.on('connect', () => {
+    setTimeout(() => {
+      socket.emit('create_room', { name: 'Tester', mode: 'ai' }, (res) => {
+        if (!res.ok) { console.error('AUTO create fail', res.error); return; }
+        myId = res.you; roomCode = res.code;
+        const lvl = parseInt(urlParams.get('lvl') || '0', 10);
+        socket.emit('set_level', { levelIndex: lvl });
+        socket.emit('add_ai', {}, () => {
+          socket.emit('add_ai', {}, () => {
+            socket.emit('start_game', {}, (r) => {
+              if (r && !r.ok) console.error('AUTO start fail', r.error);
+              else console.log('AUTO game started');
+            });
+          });
+        });
+      });
+    }, 300);
+  });
+}

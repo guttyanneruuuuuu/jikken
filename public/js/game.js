@@ -129,6 +129,8 @@ export class Game {
   // ============================================================
   _loop(now) {
     if (!this.running) return;
+    const dt = this._lastNow ? Math.min(0.05, (now - this._lastNow) / 1000) : 0.016;
+    this._lastNow = now;
     // 入力送信(30Hz)
     if (now - this.lastInputSend > 33) {
       this.socket.emit('input', this.controls.get());
@@ -136,14 +138,19 @@ export class Game {
     }
     // 補間
     for (const pl of this.players.values()) {
-      pl.render.x += (pl.target.x - pl.render.x) * 0.35;
-      pl.render.y += (pl.target.y - pl.render.y) * 0.35;
+      const ddx = pl.target.x - pl.render.x, ddy = pl.target.y - pl.render.y;
+      pl.render.x += ddx * 0.35;
+      pl.render.y += ddy * 0.35;
+      // 移動判定(バウンドアニメ用)
+      pl.moving = Math.hypot(ddx, ddy) > 0.6;
+      if (pl.phase === undefined) pl.phase = Math.random() * 6;
       // 角度補間(最短回り)
       let d = pl.target.dir - pl.render.dir;
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       pl.render.dir += d * 0.35;
     }
+    this._dt = dt;
     this.render();
     this.rafId = requestAnimationFrame(this._loop);
   }
@@ -154,10 +161,12 @@ export class Game {
   render() {
     const r = this.renderer;
     const myId = this.getMyId();
-    r.clear();
+    r.clear(this._dt || 0.016);
     if (!this.level || !this.tiles) return;
     const W = this.level.width, H = this.level.height;
 
+    // 0) ステージ土台(浮遊感)
+    r.drawStage(this.level, TILE);
     // 1) 床を全部描く
     r.drawFloor(this.tiles, W, H, TILE);
 
@@ -188,10 +197,13 @@ export class Game {
       } else if (d.type === 'station') {
         this._drawStation(d.x, d.y, d.cell);
       } else if (d.type === 'player') {
-        r.drawPlayer({ ...d.pl.data, x: d.pl.render.x, y: d.pl.render.y, dir: d.pl.render.dir },
+        r.drawPlayer({ ...d.pl.data, x: d.pl.render.x, y: d.pl.render.y, dir: d.pl.render.dir, moving: d.pl.moving, phase: d.pl.phase },
           d.pl.data.id === myId);
       }
     }
+
+    // 仕上げ: ビネット
+    r.drawVignette();
   }
 
   _drawStation(x, y, cell) {
