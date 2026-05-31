@@ -343,7 +343,18 @@ function nearestStation(room, p, type, filter) {
   return nearest(room, p, list);
 }
 function nearestFree(room, p, type, item) {
-  const list = findStations(room, type).filter(s => !s.cell.item || (item && s.cell.item.id === item.id));
+  // 他AIが同じ加工ステーションへ向かっている/作業中なら避ける(取り合い防止)
+  const reserved = new Set();
+  for (const id of room.aiPlayers) {
+    if (id === p.id) continue;
+    const o = room.players.get(id);
+    if (o && o.ai && o.ai.goal && (o.ai.goal.act === 'chop' || o.ai.goal.act === 'cook')) {
+      reserved.add(`${o.ai.goal.tx},${o.ai.goal.ty}`);
+    }
+  }
+  let list = findStations(room, type).filter(s => !s.cell.item || (item && s.cell.item.id === item.id));
+  const free = list.filter(s => !reserved.has(`${s.tx},${s.ty}`));
+  if (free.length) list = free; // 空いてる所を優先。全部埋まってたら諦めて最寄り
   return nearest(room, p, list);
 }
 function nearestEmptyCounter(room, p, exclude) {
