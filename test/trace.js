@@ -12,7 +12,7 @@ for (let i = 0; i < FPS * 25; i++) {
     let board = [];
     for (let y = 0; y < room.height; y++) for (let x = 0; x < room.width; x++) {
       const c = room.stations[y][x];
-      if (c.item) board.push(c.station + '=' + (c.item.kind === 'plate' ? 'PL[' + c.item.contents.map(t => t.type[0] + t.state[0]).join(',') + ']' : c.item.type[0] + c.item.state[0]));
+      if (c.item) board.push(`(${x},${y})` + c.station + '=' + (c.item.kind === 'plate' ? 'PL[' + c.item.contents.map(t => t.type[0] + t.state[0]).join(',') + ']' : c.item.type[0] + c.item.state[0]));
     }
     const hold = p.holding ? (p.holding.kind === 'plate' ? 'PL[' + p.holding.contents.map(t => t.type[0]).join('') + ']' : p.holding.type[0] + p.holding.state[0]) : '-';
     console.log((i / FPS).toFixed(1), 'hold=' + hold, 'goal=' + (p.ai.goal ? p.ai.goal.type : 'X'), 'ctr=' + p.ai.counterKey, '|', board.join(' '));

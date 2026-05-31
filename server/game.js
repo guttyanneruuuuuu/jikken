@@ -167,14 +167,17 @@ export class GameRoom {
     this.startTime = Date.now();
     this.lastOrderTime = Date.now();
     this.lastTick = Date.now();
+    // 注文ペース設定(プレイ人数に応じて緩急)
+    const crew = Math.max(1, this.players.size);
+    this.orderInterval = 13000;          // 初期発生間隔
+    this.maxOrders = Math.min(2 + crew, 5); // 同時注文上限
     // プレイヤー再配置
     let i = 0;
     for (const p of this.players.values()) {
       p.holding = null;
       this._placePlayerAtSpawn(p, i++);
     }
-    // 最初の注文を2つ
-    this._spawnOrder();
+    // 最初の注文を1つ(立ち上がりを優しく)
     this._spawnOrder();
   }
 
@@ -182,12 +185,15 @@ export class GameRoom {
     const menu = this.level.menu;
     const recipeKey = menu[Math.floor(Math.random() * menu.length)];
     const recipe = RECIPES[recipeKey];
+    // レシピの工程数に応じて制限時間を設定(作るのに必要な時間+余裕)
+    const steps = recipe.requires.length;
+    const limit = 50 + steps * 14; // 2材料=78s, 4材料=106s 程度
     this.orders.push({
       id: newItemId(),
       recipe: recipeKey,
-      timeLimit: 45,     // 秒
-      timeLeft: 45,
-      maxTime: 45,
+      timeLimit: limit,
+      timeLeft: limit,
+      maxTime: limit,
     });
   }
 
@@ -220,11 +226,12 @@ export class GameRoom {
     }
 
     // 注文スポーン
-    if (now - this.lastOrderTime > this.orderInterval && this.orders.length < 5) {
+    const maxOrders = this.maxOrders || 4;
+    if (now - this.lastOrderTime > this.orderInterval && this.orders.length < maxOrders) {
       this._spawnOrder();
       this.lastOrderTime = now;
-      // 難易度に応じて間隔を少し変動
-      this.orderInterval = 7000 + Math.random() * 4000;
+      // ゆとりのあるペース配分(AIでも捌けるよう緩め)
+      this.orderInterval = 11000 + Math.random() * 5000;
     }
 
     // 注文タイマー
@@ -330,6 +337,8 @@ export class GameRoom {
     if (tile === TILE.FLOOR) return; // 何もない床
 
     const st = cell.station;
+    // 壁(ステーション無し)には何も置けない/取れない
+    if (st === STATION.NONE) return;
 
     // --- 食材箱: 食材を取り出して持つ ---
     if (CRATE_TO_INGREDIENT[st]) {
