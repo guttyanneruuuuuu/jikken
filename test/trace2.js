@@ -1,12 +1,14 @@
 import { GameRoom } from '../server/game.js';
 import { attachAI } from '../server/ai.js';
 let vn = 1e6; Date.now = () => vn;
-const room = new GameRoom('T', { mode: 'ai', levelIndex: 0 }); room.loadLevel(0);
+const lvl = parseInt(process.argv[2] || '1', 10);
+const room = new GameRoom('T', { mode: 'ai', levelIndex: lvl }); room.loadLevel(lvl);
 room.addPlayer('AI_a', 'A', true); attachAI(room); room.start();
+// 単一注文(salad固定)に限定して挙動を観察
 room.orders = [{ id: 9, recipe: 'salad', timeLeft: 999, maxTime: 999 }]; room._spawnOrder = () => {};
 const p = room.players.get('AI_a');
 const FPS = 30, dtm = 1000 / FPS;
-for (let i = 0; i < FPS * 25; i++) {
+for (let i = 0; i < FPS * 30; i++) {
   vn += dtm; room.update();
   if (i % 20 === 0) {
     let board = [];
@@ -16,7 +18,7 @@ for (let i = 0; i < FPS * 25; i++) {
     }
     const hold = p.holding ? (p.holding.kind === 'plate' ? 'PL[' + p.holding.contents.map(t => t.type[0]).join('') + ']' : p.holding.type[0] + p.holding.state[0]) : '-';
     const g = p.ai.goal ? `${p.ai.goal.act}@(${p.ai.goal.tx},${p.ai.goal.ty})` : 'X';
-    console.log((i / FPS).toFixed(1), 'hold=' + hold, 'goal=' + g, 'ctr=' + p.ai.counterKey, 'score=' + room.score, '|', board.join(' '));
+    console.log((i / FPS).toFixed(1), 'pos=(' + (p.x / 64).toFixed(1) + ',' + (p.y / 64).toFixed(1) + ')', 'hold=' + hold, 'goal=' + g, 'ctr=' + p.ai.counterKey, 'stuck=' + (p.ai.stuck || 0).toFixed(1), 'sc=' + room.score, '|', board.join(' '));
   }
 }
 console.log('score', room.score);

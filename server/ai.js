@@ -160,27 +160,34 @@ function decide(room, p) {
 }
 
 // ============================================================
-// 移動 & 到達時アクション
+// 移動 & 到達時アクション (BFS経路探索つき)
 // ============================================================
 function moveAndAct(room, p, dt) {
   const ai = p.ai;
   const g = ai.goal;
-  const stand = bestStand(room, p, g.tx, g.ty);
+  const stand = bestStandReachable(room, p, g.tx, g.ty);
   if (!stand) { ai.goal = null; p.input.mx = 0; p.input.my = 0; p.input.interact = false; return; }
 
   const dx = stand.x - p.x, dy = stand.y - p.y;
   const dist = Math.hypot(dx, dy);
 
-  if (dist > TILE_SIZE * 0.28) {
-    p.input.mx = dx / dist; p.input.my = dy / dist; p.input.interact = false;
+  if (dist > TILE_SIZE * 0.30) {
+    // 目標の立ち位置セルまでBFS経路を計算し、次のウェイポイントへ向かう
+    const wp = nextWaypoint(room, p, stand.tx, stand.ty);
+    const tx = wp ? wp.x : stand.x, ty = wp ? wp.y : stand.y;
+    const wdx = tx - p.x, wdy = ty - p.y;
+    const wd = Math.hypot(wdx, wdy) || 1;
+    p.input.mx = wdx / wd; p.input.my = wdy / wd; p.input.interact = false;
+
     // スタック検知
     if (ai.lastX !== undefined) {
       const moved = Math.hypot(p.x - ai.lastX, p.y - ai.lastY);
       ai.stuck = moved < 0.4 ? ai.stuck + dt : 0;
     }
     ai.lastX = p.x; ai.lastY = p.y;
-    if (ai.stuck > 1.0) {
-      ai.stuck = 0; ai.goal = null;
+    if (ai.stuck > 1.2) {
+      ai.stuck = 0;
+      // 一時的に横方向へずれて回避
       p.input.mx = (Math.random() - 0.5) * 2;
       p.input.my = (Math.random() - 0.5) * 2;
     }
@@ -357,6 +364,94 @@ function bestStand(room, p, tx, ty) {
     if (d < bd) { bd = d; best = { x: wx, y: wy, tx: fx, ty: fy }; }
   }
   return best;
+}
+
+// 到達可能(BFSで歩ける)な隣接床のうち、経路が最短の立ち位置を選ぶ
+function bestStandReachable(room, p, tx, ty) {
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const ptx = Math.floor(p.x / TILE_SIZE), pty = Math.floor(p.y / TILE_SIZE);
+  let best = null, bestLen = Infinity;
+  for (const [ox, oy] of dirs) {
+    const fx = tx + ox, fy = ty + oy;
+    if (fx < 0 || fy < 0 || fx >= room.width || fy >= room.height) continue;
+    if (room.tiles[fy][fx] !== TILE.FLOOR) continue;
+    const path = bfsPath(room, ptx, pty, fx, fy);
+    if (path) {
+      const len = path.length;
+      if (len < bestLen) {
+        bestLen = len;
+        best = { x: fx * TILE_SIZE + TILE_SIZE / 2, y: fy * TILE_SIZE + TILE_SIZE / 2, tx: fx, ty: fy };
+      }
+    }
+  }
+  // 到達不能なら直線で一番近い隣接床にフォールバック
+  return best || bestStand(room, p, tx, ty);
+}
+
+// BFSでタイル経路を求める(歩けるのはFLOORのみ)。経路セル配列[{x,y}...]を返す
+function bfsPath(room, sx, sy, gx, gy) {
+  if (sx === gx && sy === gy) return [{ x: gx, y: gy }];
+  const W = room.width, H = room.height;
+  const walkable = (x, y) => x >= 0 && y >= 0 && x < W && y < H && room.tiles[y][x] === TILE.FLOOR;
+  if (!walkable(gx, gy)) return null;
+  // 開始セルが床でない場合(端数)でも近傍床から開始
+  const startX = walkable(sx, sy) ? sx : null;
+  if (startX === null) {
+    // 最近傍の歩ける床を探す
+    let found = null, fd = Infinity;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (walkable(x, y)) { const d = Math.abs(x - sx) + Math.abs(y - sy); if (d < fd) { fd = d; found = { x, y }; } }
+    }
+    if (!found) return null; sx = found.x; sy = found.y;
+  }
+  const key = (x, y) => y * W + x;
+  const prev = new Map();
+  const q = [[sx, sy]];
+  prev.set(key(sx, sy), null);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let head = 0;
+  while (head < q.length) {
+    const [cx, cy] = q[head++];
+    if (cx === gx && cy === gy) break;
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!walkable(nx, ny)) continue;
+      const k = key(nx, ny);
+      if (prev.has(k)) continue;
+      prev.set(k, [cx, cy]);
+      q.push([nx, ny]);
+    }
+  }
+  if (!prev.has(key(gx, gy))) return null;
+  // 経路復元
+  const path = [];
+  let cur = [gx, gy];
+  while (cur) {
+    path.push({ x: cur[0], y: cur[1] });
+    cur = prev.get(key(cur[0], cur[1]));
+  }
+  path.reverse();
+  return path;
+}
+
+// 次に向かうべきワールド座標のウェイポイントを返す
+function nextWaypoint(room, p, gtx, gty) {
+  const ptx = Math.floor(p.x / TILE_SIZE), pty = Math.floor(p.y / TILE_SIZE);
+  const path = bfsPath(room, ptx, pty, gtx, gty);
+  if (!path || path.length < 2) {
+    return { x: gtx * TILE_SIZE + TILE_SIZE / 2, y: gty * TILE_SIZE + TILE_SIZE / 2 };
+  }
+  // path[0]=現在セル。次のセル中心を目標に。既にその中心に近ければ次へ。
+  let idx = 1;
+  // 現在地がpath[1]に十分近ければpath[2]へ進む(滑らかに)
+  while (idx < path.length - 1) {
+    const c = path[idx];
+    const cx = c.x * TILE_SIZE + TILE_SIZE / 2, cy = c.y * TILE_SIZE + TILE_SIZE / 2;
+    if (Math.hypot(cx - p.x, cy - p.y) < TILE_SIZE * 0.4) idx++;
+    else break;
+  }
+  const t = path[idx];
+  return { x: t.x * TILE_SIZE + TILE_SIZE / 2, y: t.y * TILE_SIZE + TILE_SIZE / 2 };
 }
 
 function work(p) { p.input.interact = true; p.lastInteract = true; }

@@ -168,9 +168,13 @@ export class GameRoom {
     this.lastOrderTime = Date.now();
     this.lastTick = Date.now();
     // 注文ペース設定(プレイ人数に応じて緩急)
+    // 1人あたり「サラダ約22秒」を捌ける想定。難易度はレベルで段階的に。
     const crew = Math.max(1, this.players.size);
-    this.orderInterval = 13000;          // 初期発生間隔
-    this.maxOrders = Math.min(2 + crew, 5); // 同時注文上限
+    const diff = (this.level.difficulty || 1); // 1,1.15,1.3...
+    // 1人あたりの基準間隔(緩め)。人数が増えるほど密度UP。
+    this.baseInterval = Math.round((22000 / crew) / diff);
+    this.orderInterval = Math.max(8000, this.baseInterval + 4000); // 立ち上がりは少し余裕
+    this.maxOrders = Math.min(1 + crew, 5);                        // 同時注文上限(捌ける範囲)
     // プレイヤー再配置
     let i = 0;
     for (const p of this.players.values()) {
@@ -230,8 +234,9 @@ export class GameRoom {
     if (now - this.lastOrderTime > this.orderInterval && this.orders.length < maxOrders) {
       this._spawnOrder();
       this.lastOrderTime = now;
-      // ゆとりのあるペース配分(AIでも捌けるよう緩め)
-      this.orderInterval = 11000 + Math.random() * 5000;
+      // 基準間隔±20%でゆらぎ(捌ける範囲を維持)
+      const base = this.baseInterval || 12000;
+      this.orderInterval = Math.round(base * (0.85 + Math.random() * 0.3));
     }
 
     // 注文タイマー

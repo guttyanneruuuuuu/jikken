@@ -135,6 +135,7 @@ export const LEVELS = [
     id: 1,
     name: 'こうえんのキッチンカー',
     duration: 180, // 秒
+    difficulty: 1.0,
     // メニュー（このレベルで注文されうる料理）
     menu: ['salad', 'burger'],
     map: [
@@ -152,6 +153,7 @@ export const LEVELS = [
     id: 2,
     name: 'まちかどダイナー',
     duration: 210,
+    difficulty: 1.15,
     menu: ['salad', 'burger', 'fishplate'],
     map: [
       '###############',
@@ -169,6 +171,7 @@ export const LEVELS = [
     id: 3,
     name: 'グランドレストラン',
     duration: 240,
+    difficulty: 1.3,
     menu: ['salad', 'burger', 'fishplate', 'deluxeburger'],
     map: [
       '#################',
